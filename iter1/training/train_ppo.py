@@ -70,7 +70,7 @@ def train(task: str, method: str, reward_idx: int, seed: int, save_dir: Path) ->
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--task", required=True, choices=list(TASKS.keys()))
-    ap.add_argument("--method", required=True, choices=["pareto", "archive"])
+    ap.add_argument("--method", required=True, choices=["pareto", "archive", "curiosity", "eureka"])
     ap.add_argument("--reward-idx", type=int, required=True)
     ap.add_argument("--seed", type=int, default=0)
     ap.add_argument("--save-dir", type=Path, default=HERE / "checkpoints")

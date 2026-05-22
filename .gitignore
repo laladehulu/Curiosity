@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+.pytest_cache/
+iter1/reward_gen/pool/
+iter1/training/checkpoints/
+iter1/logs/
+iter1/tables/
+iter1/figures/

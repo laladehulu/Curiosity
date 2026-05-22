@@ -104,6 +104,68 @@ def figure_5_perturbation_breakdown(robustness_json: Path) -> None:
     _save(fig, f"figure5_perturbation_{data['task']}")
 
 
+def figure_6_pareto_front_2d(curiosity_pool_dir: Path) -> None:
+    """Scatter of (mean_fitness, curiosity) for the curiosity variant, with Pareto front highlighted."""
+    jsons = sorted(curiosity_pool_dir.glob("reward_*.json"))
+    if not jsons:
+        return
+    fitnesses, entropies, on_front_list = [], [], []
+    candidates = []
+    for jp in jsons:
+        d = json.loads(jp.read_text())
+        if d.get("failed_compile") or not d.get("fitness_vec"):
+            continue
+        candidates.append(d)
+        fitnesses.append(d["mean_fitness"])
+        entropies.append(d.get("curiosity", 0.0))
+
+    if not candidates:
+        return
+
+    # Compute Pareto front
+    score_mat = np.array(list(zip(fitnesses, entropies)))
+    n = score_mat.shape[0]
+    on_front = np.ones(n, dtype=bool)
+    for i in range(n):
+        if not on_front[i]:
+            continue
+        for j in range(n):
+            if i == j:
+                continue
+            if np.all(score_mat[j] >= score_mat[i]) and np.any(score_mat[j] > score_mat[i]):
+                on_front[i] = False
+                break
+
+    fig, ax = plt.subplots(figsize=(7, 5))
+    fitnesses = np.array(fitnesses)
+    entropies = np.array(entropies)
+    ax.scatter(fitnesses[~on_front], entropies[~on_front], c="gray", alpha=0.5, label="Dominated", s=30)
+    ax.scatter(fitnesses[on_front], entropies[on_front], c="red", marker="*", s=120, label="Pareto front", zorder=5)
+    # Connect front points
+    front_f = fitnesses[on_front]
+    front_e = entropies[on_front]
+    order = np.argsort(front_f)
+    ax.plot(front_f[order], front_e[order], "r--", alpha=0.5)
+    ax.set_xlabel("Mean env-true return (fitness)")
+    ax.set_ylabel("State-visitation entropy (curiosity)")
+    ax.set_title("Figure 6 — Curiosity-Pareto front: (Fitness, Entropy)")
+    ax.legend()
+    _save(fig, "figure6_pareto_front_2d")
+
+
+def figure_7_diversity_by_method(diversity_csv: Path) -> None:
+    """Box plot of pairwise state-occupancy TV divergence within each method's pool."""
+    df = pd.read_csv(diversity_csv)
+    fig, ax = plt.subplots(figsize=(7, 5))
+    order = ["curiosity", "pareto", "eureka", "archive"]
+    present = [m for m in order if m in df["method"].values]
+    sns.boxplot(data=df[df["method"].isin(present)], x="method", y="state_occ_tv",
+                order=present, ax=ax)
+    ax.set_ylabel("Pairwise state-occupancy TV distance")
+    ax.set_title("Figure 7 — Within-pool behavioral diversity by method")
+    _save(fig, "figure7_diversity_by_method")
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--headline-csv", type=Path)
@@ -111,6 +173,8 @@ def main() -> None:
     ap.add_argument("--archive-json", type=Path)
     ap.add_argument("--noise-json", type=Path)
     ap.add_argument("--robustness-json", type=Path)
+    ap.add_argument("--curiosity-pool-dir", type=Path, help="Pool dir for curiosity variant (for figure 6)")
+    ap.add_argument("--diversity-csv", type=Path, help="Pairwise diversity CSV (for figure 7)")
     args = ap.parse_args()
     if args.headline_csv:
         figure_1_headline(args.headline_csv)
@@ -122,6 +186,10 @@ def main() -> None:
         figure_4_noise_floor(args.noise_json)
     if args.robustness_json:
         figure_5_perturbation_breakdown(args.robustness_json)
+    if args.curiosity_pool_dir:
+        figure_6_pareto_front_2d(args.curiosity_pool_dir)
+    if args.diversity_csv:
+        figure_7_diversity_by_method(args.diversity_csv)
 
 
 if __name__ == "__main__":

@@ -244,6 +244,7 @@ class Candidate:
     archive_cell: Optional[list[int]] = None
     failed_compile: bool = False
     error: Optional[str] = None
+    curiosity: float = 0.0
 
     def to_dict(self) -> dict:
         return {
@@ -257,6 +258,7 @@ class Candidate:
             "archive_cell": self.archive_cell,
             "failed_compile": self.failed_compile,
             "error": self.error,
+            "curiosity": self.curiosity,
         }
 
 
