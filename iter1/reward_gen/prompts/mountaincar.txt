@@ -1,0 +1,44 @@
+# MountainCarContinuous-v0 reward design prompt
+
+## Environment
+Gymnasium task `MountainCarContinuous-v0`. An underpowered car in a valley
+must reach a flag on a hilltop to the right. It cannot drive straight up;
+the agent must build momentum by oscillating.
+
+**Observation** (Box, shape (2,)):
+- obs[0] = position   in [-1.2, 0.6]    (goal is at 0.45)
+- obs[1] = velocity   in [-0.07, 0.07]
+
+**Action** (Box, shape (1,)): force in [-1, 1].
+
+**Default reward** (for reference):
+    +100 if position >= 0.45 (terminal), -0.1 * action^2 per step.
+This is sparse: zero progress signal until the agent stumbles onto the goal.
+
+**Successful behavior**: car reaches position >= 0.45 — either by building
+momentum via oscillation, or by pushing hard if power suffices.
+
+## Your task
+Design a reward function for PPO. The environment is *deceptive*: a naive
+reward for going right gets stuck because the agent doesn't have enough power
+to climb directly. Encourage momentum-building if useful.
+
+## Output format
+Return ONLY a Python function inside a ```python ... ``` block.
+
+```python
+def compute_reward(obs, action, next_obs, done):
+    # obs and next_obs: numpy arrays shape (2,)
+    # action: numpy array shape (1,)
+    # done: bool
+    # Must return a finite float scalar.
+    ...
+    return reward
+```
+
+## Hard constraints
+- Function name must be exactly `compute_reward`.
+- Signature must be `(obs, action, next_obs, done)`.
+- Return a finite scalar.
+- Allowed imports: numpy (as np), math, scipy.
+- Do not import os, sys, subprocess, or open files.

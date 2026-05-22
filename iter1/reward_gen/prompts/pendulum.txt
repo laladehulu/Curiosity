@@ -1,0 +1,46 @@
+# Pendulum-v1 reward design prompt
+
+## Environment
+Gymnasium task `Pendulum-v1`. A frictionless single-pivot pendulum starts at a
+random angle. The agent applies torque to swing it upright and balance there.
+
+**Observation** (Box, shape (3,)):
+- obs[0] = cos(theta)  in [-1, 1]
+- obs[1] = sin(theta)  in [-1, 1]
+- obs[2] = theta_dot   in [-8, 8]   (angular velocity, rad/s)
+
+theta=0 corresponds to upright (obs = [1, 0, *]).
+
+**Action** (Box, shape (1,)): torque in [-2, 2] N·m.
+
+**Default reward** (for reference):
+    -(theta_normalized^2 + 0.1 * theta_dot^2 + 0.001 * action^2)
+where theta_normalized in [-pi, pi].
+
+**Successful behavior**: pendulum settles within ~0.2 rad of upright with low
+angular velocity, and stays there.
+
+## Your task
+Design a reward function for PPO to learn upright stabilization. You may use
+numpy as `np`.
+
+## Output format
+Return ONLY a Python function inside a ```python ... ``` block.
+
+```python
+def compute_reward(obs, action, next_obs, done):
+    # obs and next_obs are 1-D numpy arrays of shape (3,)
+    # action is a 1-D numpy array of shape (1,)
+    # done is a bool
+    # Must return a finite float scalar.
+    ...
+    return reward
+```
+
+## Hard constraints
+- Function name must be exactly `compute_reward`.
+- Signature must be `(obs, action, next_obs, done)`.
+- Return a finite scalar.
+- Allowed imports: numpy (as np), math, scipy.
+- Do not import os, sys, subprocess, or open files.
+- No print statements or external state.

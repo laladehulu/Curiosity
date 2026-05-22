@@ -1,0 +1,14 @@
+gymnasium[classic-control,box2d]>=0.29.0
+stable-baselines3>=2.2.0
+torch>=2.0.0
+numpy>=1.24
+scipy>=1.10
+scikit-learn>=1.3
+pandas>=2.0
+matplotlib>=3.7
+seaborn>=0.12
+anthropic>=0.40.0
+ast-comments>=1.2
+zss>=1.2
+sentence-transformers>=2.5
+tqdm>=4.66

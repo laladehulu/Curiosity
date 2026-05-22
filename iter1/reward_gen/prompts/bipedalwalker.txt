@@ -1,0 +1,60 @@
+# BipedalWalker-v3 reward design prompt
+
+## Environment
+Gymnasium task `BipedalWalker-v3`. A 2-leg humanoid must walk to the right
+across a flat-ish terrain without falling.
+
+**Observation** (Box, shape (24,)): hull angle, angular velocity, x/y
+velocity, joint angles & velocities for hip/knee left/right, leg ground
+contacts, 10 lidar rangefinders. Specifically:
+- obs[0]  hull angle
+- obs[1]  hull angular velocity
+- obs[2]  x velocity
+- obs[3]  y velocity
+- obs[4]  hip1 angle
+- obs[5]  hip1 angular velocity
+- obs[6]  knee1 angle
+- obs[7]  knee1 angular velocity
+- obs[8]  leg1 ground contact (0 or 1)
+- obs[9]  hip2 angle
+- obs[10] hip2 angular velocity
+- obs[11] knee2 angle
+- obs[12] knee2 angular velocity
+- obs[13] leg2 ground contact (0 or 1)
+- obs[14:24] lidar 10-ray rangefinder
+
+**Action** (Box, shape (4,)): torques for hip1, knee1, hip2, knee2, each in [-1, 1].
+
+**Default reward** (for reference):
+    +130 over an episode for reaching the right edge,
+    -100 if the hull touches the ground (fall),
+    +x_velocity per step (forward progress),
+    -5 * |action| per step (control cost).
+
+**Successful behavior**: forward progress without falling. Many viable gaits
+exist (galloping, lurching, careful stepping).
+
+## Your task
+Design a reward function for PPO. There are multiple valid behavioral
+strategies (different gaits). The reward should encourage forward locomotion
+without overly constraining the gait.
+
+## Output format
+Return ONLY a Python function inside a ```python ... ``` block.
+
+```python
+def compute_reward(obs, action, next_obs, done):
+    # obs and next_obs: numpy arrays shape (24,)
+    # action: numpy array shape (4,)
+    # done: bool
+    # Must return a finite float scalar.
+    ...
+    return reward
+```
+
+## Hard constraints
+- Function name must be exactly `compute_reward`.
+- Signature must be `(obs, action, next_obs, done)`.
+- Return a finite scalar.
+- Allowed imports: numpy (as np), math, scipy.
+- Do not import os, sys, subprocess, or open files.
