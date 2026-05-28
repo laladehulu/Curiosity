@@ -1,0 +1,51 @@
+# HalfCheetah-v4 reward design prompt
+
+## Environment
+Gymnasium task `HalfCheetah-v4` (MuJoCo). A 2D planar cheetah with two legs
+must learn to run forward as fast as possible. No falling / no early
+termination — episodes are a fixed 1000 steps.
+
+**Observation** (Box, shape (17,)):
+- obs[0]   = z-position of front tip (rootz; height of torso)
+- obs[1]   = rooty angle of front tip (pitch of torso)
+- obs[2:8] = joint angles (bthigh, bshin, bfoot, fthigh, fshin, ffoot)
+- obs[8]   = x-velocity of front tip (forward velocity of torso) — KEY signal
+- obs[9]   = z-velocity of front tip
+- obs[10]  = angular velocity of front tip
+- obs[11:17] = joint angular velocities (same joint order as obs[2:8])
+
+Note: x-position is excluded from the observation by default in HalfCheetah-v4.
+
+**Action** (Box, shape (6,)): torque on each of the 6 joints, in [-1, 1].
+
+**Default env reward** (for reference, you do NOT need to copy it):
+    reward = forward_velocity_reward - 0.1 * sum(action^2)
+where forward_velocity_reward = (x_position_after - x_position_before) / dt.
+
+## Your task
+Design a `compute_reward(obs, action, next_obs, done)` for PPO that
+encourages the cheetah to run forward quickly while staying upright and
+spending energy efficiently. You may shape the reward however you like —
+forward velocity is in next_obs[8], pitch is in obs[1], joint velocities are
+in obs[11:17]. Penalising large actions tends to help.
+
+## Output format
+Return ONLY a Python function inside a ```python ... ``` block.
+
+```python
+def compute_reward(obs, action, next_obs, done):
+    # obs and next_obs: numpy arrays shape (17,)
+    # action: numpy array shape (6,)
+    # done: bool
+    # Must return a finite float scalar.
+    ...
+    return reward
+```
+
+## Hard constraints
+- Function name must be exactly `compute_reward`.
+- Signature must be `(obs, action, next_obs, done)`.
+- Return a finite scalar.
+- Allowed imports: numpy (as np), math, scipy.
+- Do not import os, sys, subprocess, or open files.
+- Do not call open(), exec(), eval(), or __import__.

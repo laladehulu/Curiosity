@@ -404,3 +404,40 @@ python -m reward_gen.gepa_archive --task pendulum --iters 10 --preflight
 If preflight passes, Phase 1 can proceed. If either fails per protocol's stop conditions, report back.
 
 ---
+
+## 2026-05-27 — Eureka baseline on easy-to-train Mac locomotion (`baseline/eureka/`)
+
+User asked to replicate Eureka (Ma et al., 2023) on an easy-to-train locomotion task that runs on a MacBook.
+
+**Task pick: HalfCheetah-v4 (MuJoCo).** Reasons:
+- It's the canonical locomotion benchmark Eureka-style methods target.
+- No early termination from falling, so PPO learns *something* useful in 50k steps (~3–5 min on M-series CPU) — unlike Hopper / Walker which collapse if not converged.
+- Gymnasium info dict surfaces `x_velocity`, `reward_run`, `reward_ctrl`, `x_position` per step — gives Eureka's Reward Reflection real fitness components to surface, not just a scalar.
+- MuJoCo is pip-installable on Apple Silicon (`pip install mujoco`); no Box2D / swig fragility.
+
+Rejected: BipedalWalker (harder for PPO to learn at this step budget, info dict is thin), Hopper/Walker (early termination wrecks the candidate-comparison signal at 50k steps).
+
+**Implementation choices vs. original Eureka:**
+- Outer-loop algorithm is faithful: sample K candidates → train PPO → eval under env-true reward → keep best → reflect → repeat.
+- Anthropic API doesn't return multiple completions per call, so K candidates = K independent calls at temperature 1.0 (run in a ThreadPool to parallelise network I/O).
+- Original Eureka feeds env *source code* into the prompt. We feed a hand-written obs/action layout for HalfCheetah-v4 because Gymnasium MuJoCo envs aren't readable in a single file.
+- Compute scaled down: K=3, iters=3, 50k PPO steps/candidate. Stays under ~$0.05 LLM spend on Haiku 4.5; wall-clock ~30–45 min. `--smoke` mode goes to 5k steps / 2 samples / 1 iter for a ~3 min sanity run.
+- Reused `iter1/reward_gen/`'s patterns (AST-validated `compile_reward`, `RewardOverrideEnv`, anthropic-only LLM client with cost tracking) but kept `baseline/eureka/` self-contained — no imports from iter1, so it stands alone as a reference baseline.
+
+**Layout produced:**
+```
+baseline/eureka/
+├── README.md
+├── requirements.txt        # gymnasium[mujoco], sb3, anthropic, torch CPU
+├── setup.sh                # Mac M-series; verifies HalfCheetah-v4 import
+├── verify_env.py           # 5-step smoke (imports, env, LLM, PPO, compile)
+├── eureka.py               # outer loop + CLI
+├── components.py           # LLM client, compile_reward, env wrapper, PPO, reflection
+└── prompts/halfcheetah.txt
+```
+
+Honest caveats called out in README: 50k steps is far below HalfCheetah convergence (~1M+ typical); single-seed eval per candidate; AST sandbox is not adversarial-grade. The Eureka comparison across candidates is still fair at this budget — absolute returns are just modest.
+
+**Status:** Code written, syntax-checked, but not yet executed against a real API key. User needs to run `bash setup.sh && python verify_env.py && python eureka.py --smoke` to confirm before kicking off a full run.
+
+---
