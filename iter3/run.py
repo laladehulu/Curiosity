@@ -45,7 +45,9 @@ DEFAULT_PPO_STEPS = 30_000
 DEFAULT_ROLLOUT_STEPS = 600
 DEFAULT_FPS = 30
 TAU_CALIBRATE_AT = 5      # after this many entries, set tau_novel from data
-AE_REFIT_EVERY = 5        # aurora strategy: refit AE every N candidates
+AE_REFIT_EVERY = 5        # aurora strategy: refit AE every N CANDIDATES SEEN
+AURORA_BOOTSTRAP_TAU = 0.15  # looser bootstrap so the archive grows enough to fit the AE
+AURORA_BOOTSTRAP_N = 5    # first N candidates are force-inserted (no dominance), then first AE refit
 
 
 def seed_everything(seed: int) -> None:
@@ -181,30 +183,36 @@ def pick_parent_and_prompt(strategy: str, archive, cold_start_prob: float, rng) 
 # ---- aurora refit ----------------------------------------------------------
 
 def aurora_refit_and_reembed(archive: KNNArchive, seed: int, verbose: bool = False):
-    """Pool all current entries, refit AE from scratch, re-embed all entries.
-
-    After re-embedding, the existing archive may not satisfy the dominance
-    rule anymore (latent space shifted). We rebuild the archive by re-
-    inserting each entry in iteration order under the new embeddings.
+    """Train AE on the full corpus of all rollouts seen so far (not just
+    archive entries — many were dominated and dropped). Re-embed all
+    archive entries with the fresh AE. Rebuild archive under new latent.
     """
     if not archive.entries:
         return None
+    # Train on ALL rollouts on disk for this run, not just archive entries.
+    rollout_dir = Path(archive.entries[0].state_path).parent
+    all_state_paths = sorted(rollout_dir.glob("rollout_*.npz"))
     feats: list[np.ndarray] = []
-    for e in archive.entries:
-        npz = dict(np.load(e.state_path))
-        feats.append(pool_trajectory(npz))
-    feat_arr = np.stack(feats)
-    model = fit_autoencoder(feat_arr, epochs=50, lr=1e-3, seed=seed, verbose=verbose)
-    new_embs = model.embed(feat_arr)
+    for p in all_state_paths:
+        feats.append(pool_trajectory(dict(np.load(p))))
+    if not feats:
+        return None
+    train_arr = np.stack(feats)
+    model = fit_autoencoder(train_arr, epochs=50, lr=1e-3, seed=seed, verbose=verbose)
+
+    # Re-embed archive entries
+    arc_feats = np.stack([pool_trajectory(dict(np.load(e.state_path)))
+                          for e in archive.entries])
+    new_embs = model.embed(arc_feats)
     for e, ne in zip(archive.entries, new_embs):
         e.embed_aurora = ne.astype(np.float32)
-    # rebuild
+    # rebuild archive
     old_entries = list(archive.entries)
     archive.entries = []
-    archive.tau_novel = 0.30  # reset before recalibrate
+    archive.tau_novel = AURORA_BOOTSTRAP_TAU
     for e in old_entries:
         archive.insert(e)
-    if len(archive.entries) >= TAU_CALIBRATE_AT:
+    if len(archive.entries) >= 3:    # was 5; relaxed so calibration fires earlier
         archive.calibrate_tau()
     return model
 
@@ -249,7 +257,8 @@ def main():
     elif cfg.strategy == "aurora":
         archive = (KNNArchive.load(archive_path, embed_key="aurora", rng_seed=cfg.seed)
                    if archive_path.exists()
-                   else KNNArchive(embed_key="aurora", rng_seed=cfg.seed))
+                   else KNNArchive(embed_key="aurora", rng_seed=cfg.seed,
+                                   tau_novel=AURORA_BOOTSTRAP_TAU))
     else:
         raise SystemExit(cfg.strategy)
 
@@ -339,20 +348,41 @@ def main():
             ref_coord=ref_coord,
             prompt_kind=gen.prompt_kind,
         )
-        status = archive.insert(entry)
+        # AURORA strategy: bootstrap phase force-inserts the first N candidates
+        # to seed the AE training set with enough diverse rollouts. Otherwise
+        # the bootstrap (raw-pooled) embeddings cluster too tightly and every
+        # subsequent candidate is dominated before the AE can ever train.
+        if cfg.strategy == "aurora" and idx < AURORA_BOOTSTRAP_N:
+            archive.entries.append(entry)
+            entry.insert_status = "bootstrap"
+            status = "bootstrap"
+        else:
+            status = archive.insert(entry)
 
         # tau calibration once after warmup (knn archives only)
         if isinstance(archive, KNNArchive) and len(archive.entries) == TAU_CALIBRATE_AT:
             archive.calibrate_tau()
             print(f"[cal] tau_novel calibrated to {archive.tau_novel:.3f}")
 
-        # AURORA refit
-        if cfg.strategy == "aurora" and len(archive.entries) > 0 \
-                and (len(archive.entries) % cfg.aurora_refit_every == 0):
-            print(f"[ae] refitting on {len(archive.entries)} entries...")
-            aurora_model = aurora_refit_and_reembed(archive, seed=cfg.seed)
-            print(f"[ae] refit done; archive now has {len(archive.entries)} entries "
-                  f"(tau_novel={archive.tau_novel:.3f})")
+        # AURORA refit — based on CANDIDATES SEEN, not archive size. Fires
+        # at the end of the bootstrap phase and every refit_every after.
+        refit_now = (
+            cfg.strategy == "aurora"
+            and (
+                (idx + 1) == AURORA_BOOTSTRAP_N
+                or ((idx + 1) > AURORA_BOOTSTRAP_N
+                    and (idx + 1 - AURORA_BOOTSTRAP_N) % cfg.aurora_refit_every == 0)
+            )
+        )
+        if refit_now:
+            print(f"[ae] refitting on {len(archive.entries)} archived entries "
+                  f"(seen {idx+1} candidates)...")
+            if len(archive.entries) >= 2:
+                aurora_model = aurora_refit_and_reembed(archive, seed=cfg.seed)
+                print(f"[ae] refit done; archive now has {len(archive.entries)} entries "
+                      f"(tau_novel={archive.tau_novel:.3f})")
+            else:
+                print(f"[ae] skip refit — only {len(archive.entries)} archived entry")
 
         # 6. persist + log
         archive.save(archive_path)
